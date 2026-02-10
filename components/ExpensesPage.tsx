@@ -67,7 +67,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
                 placeholder="Pesquisar despesa ou categoria..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="bg-dark-bg border border-dark-border rounded-[1.5rem] py-5 pl-14 pr-8 text-sm text-white focus:border-brand-500 outline-none transition-all w-full font-bold"
+                className="bg-dark-bg border border-dark-border rounded-[1.5rem] py-5 pl-14 pr-8 text-sm text-white focus:border-brand-500 outline-none transition-all w-full font-bold placeholder:text-gray-500"
               />
             </div>
 

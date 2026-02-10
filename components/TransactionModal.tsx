@@ -105,7 +105,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             <button
               type="button"
               onClick={() => setType(TransactionType.INCOME)}
-              className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${type === TransactionType.INCOME ? 'bg-brand-600 text-white shadow-[0_4px_20px_rgba(124,58,237,0.3)]' : 'text-gray-600 hover:text-gray-400'}`}
+              className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${type === TransactionType.INCOME ? 'bg-brand-600 text-white shadow-[0_4px_20px_rgba(124,58_237,0.3)]' : 'text-gray-600 hover:text-gray-400'}`}
             >
               Entrada
             </button>
@@ -116,7 +116,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
               <label className="block text-[10px] font-black text-gray-600 uppercase tracking-[0.2em] mb-3 ml-1">Descrição</label>
               <input
                 autoFocus
-                className="w-full px-6 py-5 bg-dark-bg border border-dark-border rounded-2xl focus:border-brand-500 outline-none text-white transition-all font-bold placeholder:text-gray-800"
+                className="w-full px-6 py-5 bg-dark-bg border border-dark-border rounded-2xl focus:border-brand-500 outline-none text-white transition-all font-bold placeholder:text-gray-500"
                 placeholder="Ex: Aluguel, Supermercado..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
