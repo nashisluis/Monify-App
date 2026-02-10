@@ -29,16 +29,13 @@ export const CommandBar: React.FC<CommandBarProps> = ({
     const p = prompt.toLowerCase().trim();
     if (!p) return 'Analisar';
     
-    // Detecção de Intenção Refinada
-    const isSimulation = p.includes('se ') || p.includes('comprar') || p.includes('preço') || p.includes('custo') || p.includes('queria') || p.includes('vale a pena') || p.includes('pretendo') || p.includes('posso');
     const isLaunch = p.match(/\d/) || p.includes('ganhei') || p.includes('gastei') || p.includes('recebi') || p.includes('paguei') || p.includes('lance') || p.includes('comprei');
-    const isAnalysis = p.includes('qual') || p.includes('quanto') || p.includes('economizar') || p.includes('mais cara') || p.includes('mais caro') || p.includes('investir') || p.includes('dica') || p.includes('como tá') || p.includes('saúde');
-
-    if (isSimulation) return 'Simular';
-    if (isLaunch) return 'Lançar';
-    if (isAnalysis) return 'Analisar';
+    const isSimulation = p.includes('se ') || p.includes('comprar') || p.includes('preço') || p.includes('custo') || p.includes('queria') || p.includes('vale a pena') || p.includes('pretendo') || p.includes('posso');
     
-    return 'Advisor';
+    if (isLaunch) return 'Lançar';
+    if (isSimulation) return 'Simular';
+    
+    return 'Analisar';
   };
 
   const processCommand = async (e: React.FormEvent) => {
@@ -52,16 +49,12 @@ export const CommandBar: React.FC<CommandBarProps> = ({
       const ai = getAIClient();
       const p = prompt.toLowerCase();
       
-      const isSimulationOrSearch = p.includes('se ') || p.includes('comprar') || p.includes('preço') || p.includes('custo') || p.includes('produto') || p.includes('quanto custa');
+      // Detecção de Intenção para evitar conflito de Tools
+      const isLaunchIntent = p.match(/\d/) || p.includes('ganhei') || p.includes('gastei') || p.includes('recebi') || p.includes('paguei') || p.includes('lance') || p.includes('comprei');
+      const isSearchIntent = p.includes('preço') || p.includes('custo') || p.includes('quanto') || p.includes('onde comprar') || p.includes('melhor preço');
 
       const expenses = transactions.filter(t => t.type === TransactionType.EXPENSE);
       const topExpenses = [...expenses].sort((a, b) => b.amount - a.amount).slice(0, 5);
-      const categoryTotals = expenses.reduce((acc: any, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
-        return acc;
-      }, {});
-      const topCategory = Object.entries(categoryTotals).sort((a: any, b: any) => b[1] - a[1])[0];
-
       const totalExpense = transactions.reduce((acc, t) => acc + (t.type === TransactionType.EXPENSE ? t.amount : 0), 0);
       const totalIncome = transactions.reduce((acc, t) => acc + (t.type === TransactionType.INCOME ? t.amount : 0), 0);
       const balance = (monthlyBudget + totalIncome) - totalExpense;
@@ -70,64 +63,63 @@ export const CommandBar: React.FC<CommandBarProps> = ({
         currentBalance: balance,
         monthlyBudget,
         topExpenses: topExpenses.map(t => `${t.description}: R$ ${t.amount}`),
-        topCategory: topCategory ? `${topCategory[0]} (R$ ${topCategory[1]})` : 'Nenhuma',
         goals: goals.map(g => `${g.name}: Alvo ${g.target}, Atual ${g.current}`),
       };
 
-      const systemInstruction = `Você é o Monify Advisor. Seja EXTREMAMENTE conciso e direto.
+      const systemInstruction = `Você é o Monify Advisor. Seja EXTREMAMENTE conciso.
       
-      ESTILO DE RESPOSTA:
-      - Use Bullet Points (•) para listar opções ou dados.
-      - Não escreva parágrafos longos. Seja telegráfico se necessário.
-      - Limite sua resposta a no máximo 150-200 palavras.
+      REGRAS:
+      - Use Bullet Points (•).
+      - Não escreva parágrafos.
       - Destaque valores em **negrito**.
+      - Se for um lançamento, peça confirmação indireta.
+      - Se for uma compra, diga o impacto % no saldo de R$ ${balance.toFixed(2)}.
 
-      Habilidades:
-      1. ANALISAR GASTOS: Foque no impacto real no saldo de R$ ${balance.toFixed(2)}.
-      2. BUSCAR PREÇOS: Use Google Search para preços reais. Liste apenas as 3 melhores opções.
-      3. SIMULAR: Diga exatamente quantos % do saldo a compra representa.
-      4. LANÇAR: Use add_transactions para registros.
+      Sempre termine com um "Veredito": Pode comprar / Melhor esperar / Lançamento efetuado.`;
 
-      Veredito Final: Sempre termine com uma frase curta de "Pode comprar" ou "Melhor esperar".`;
+      // Definimos as tools dinamicamente para evitar o erro de mistura de tools (Search + Functions)
+      const tools = isLaunchIntent ? [
+        {
+          functionDeclarations: [{
+            name: 'add_transactions',
+            description: 'Lança registros financeiros reais no banco de dados do usuário.',
+            parameters: {
+              type: Type.OBJECT,
+              properties: {
+                items: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      description: { type: Type.STRING },
+                      amount: { type: Type.NUMBER },
+                      type: { type: Type.STRING, enum: ['INCOME', 'EXPENSE'] },
+                      category: { type: Type.STRING, description: 'Categoria apropriada conforme lista padrão.' }
+                    },
+                    required: ['description', 'amount', 'type', 'category']
+                  }
+                }
+              },
+              required: ['items']
+            }
+          }]
+        }
+      ] : [
+        { googleSearch: {} }
+      ];
 
       const response = await withRetry(async () => {
         return await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: `Comando: "${prompt}". Contexto: ${JSON.stringify(financialContext)}`,
+          contents: `Usuário diz: "${prompt}". Contexto financeiro: ${JSON.stringify(financialContext)}`,
           config: {
             systemInstruction: systemInstruction,
-            tools: [
-              { googleSearch: {} },
-              {
-                functionDeclarations: [{
-                  name: 'add_transactions',
-                  description: 'Lança registros financeiros reais.',
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      items: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            description: { type: Type.STRING },
-                            amount: { type: Type.NUMBER },
-                            type: { type: Type.STRING, enum: ['INCOME', 'EXPENSE'] },
-                            category: { type: Type.STRING, description: 'Categoria oficial.' }
-                          },
-                          required: ['description', 'amount', 'type', 'category']
-                        }
-                      }
-                    },
-                    required: ['items']
-                  }
-                }]
-              }
-            ]
+            tools: tools
           }
         });
       });
 
+      // Se houver chamada de função (Lançamento)
       if (response.functionCalls && response.functionCalls.length > 0) {
         const call = response.functionCalls[0];
         if (call.name === 'add_transactions') {
@@ -143,21 +135,23 @@ export const CommandBar: React.FC<CommandBarProps> = ({
           }));
 
           if (onAddTransactions) onAddTransactions(newTransactions);
-          setFeedback({ text: `Lançado: ${items.map(i => i.description).join(', ')}.`, type: 'success' });
+          setFeedback({ text: `Perfeito! Lancei os seguintes itens:\n• ${items.map(i => `${i.description} (R$ ${i.amount})`).join('\n• ')}`, type: 'success' });
           setPrompt('');
-          setTimeout(() => setFeedback(null), 3000);
+          setTimeout(() => setFeedback(null), 4000);
         }
       } else {
+        // Se for resposta de texto (Busca ou Análise)
         const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         setFeedback({ 
-          text: response.text || "Comando processado.", 
-          type: isSimulationOrSearch ? 'sandbox' : 'info',
+          text: response.text || "Não consegui processar o comando agora.", 
+          type: isSearchIntent ? 'sandbox' : 'info',
           sources: sources
         });
         setPrompt('');
       }
     } catch (error: any) {
-      setFeedback({ text: "Tente novamente em breve.", type: 'error' });
+      console.error("Erro no Advisor:", error);
+      setFeedback({ text: "Tente novamente em breve. (Erro de comunicação com IA)", type: 'error' });
       setTimeout(() => setFeedback(null), 3000);
     } finally {
       setIsLoading(false);
@@ -172,7 +166,9 @@ export const CommandBar: React.FC<CommandBarProps> = ({
             ? 'bg-dark-card/95 border-brand-500/50' 
             : feedback.type === 'success' 
               ? 'bg-green-500/10 border-green-500/30'
-              : 'bg-dark-card/95 border-dark-border'
+              : feedback.type === 'error'
+                ? 'bg-red-500/10 border-red-500/30'
+                : 'bg-dark-card/95 border-dark-border'
         }`}>
           
           <div className="p-5 lg:p-6 border-b border-white/5 flex items-center justify-between sticky top-0 bg-dark-card/80 backdrop-blur-md z-20">
@@ -180,9 +176,9 @@ export const CommandBar: React.FC<CommandBarProps> = ({
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black ${
                   feedback.type === 'sandbox' ? 'bg-brand-500/20 text-brand-400' : 'bg-white/5 text-gray-500'
                 }`}>
-                  {feedback.type === 'sandbox' ? '✨' : '💬'}
+                  {feedback.type === 'sandbox' ? '✨' : feedback.type === 'success' ? '✅' : '💬'}
                 </div>
-                <span className="text-[10px] font-black text-brand-500 uppercase tracking-widest">Monify Insight</span>
+                <span className="text-[10px] font-black text-brand-500 uppercase tracking-widest">Monify Advisor</span>
              </div>
              <button 
               onClick={() => setFeedback(null)} 
@@ -194,7 +190,7 @@ export const CommandBar: React.FC<CommandBarProps> = ({
 
           <div className="p-6 lg:p-8 max-h-[45vh] lg:max-h-[50vh] overflow-y-auto custom-scrollbar">
             <div className={`font-black leading-relaxed tracking-tight space-y-4 ${
-              feedback.type === 'success' ? 'text-green-500 text-sm' : 'text-gray-100 text-sm lg:text-base'
+              feedback.type === 'success' ? 'text-green-500 text-sm lg:text-base' : 'text-gray-100 text-sm lg:text-base'
             }`}>
               <div className="whitespace-pre-line prose prose-invert max-w-none">
                 {feedback.text}
@@ -228,7 +224,7 @@ export const CommandBar: React.FC<CommandBarProps> = ({
               type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Lance um gasto ou pergunte algo..."
+              placeholder="Lance um gasto ou pergunte sobre algo..."
               className="w-full bg-transparent border-none outline-none text-white placeholder:text-gray-700 font-black text-sm lg:text-lg tracking-tight py-3 lg:py-4"
             />
           </div>
